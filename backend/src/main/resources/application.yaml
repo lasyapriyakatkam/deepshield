@@ -1,0 +1,37 @@
+# DeepShield Application Configuration
+
+spring:
+  application:
+    name: deepshield
+
+  # H2 Database (in-memory for development)
+  datasource:
+    url: jdbc:h2:mem:deepshield
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  # JPA / Hibernate
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # H2 Console (access at http://localhost:8080/h2-console)
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # File upload limits
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+# Server port
+server:
+  port: 8080
