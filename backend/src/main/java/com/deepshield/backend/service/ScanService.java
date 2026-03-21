@@ -6,6 +6,7 @@ import com.deepshield.backend.model.enums.InputType;
 import com.deepshield.backend.model.enums.ScanStatus;
 import com.deepshield.backend.repository.ScanJobRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -23,27 +24,57 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ScanService {
 
     private final ScanJobRepository scanJobRepository;
+    private final VideoDownloadService videoDownloadService;
+    private final UrlParserService urlParserService;
 
     /** Directory where uploaded/downloaded files are stored (absolute path) */
     private static final Path UPLOAD_DIR = Paths.get(System.getProperty("user.dir"), "uploads");
 
     /**
      * Creates a scan job from a social media URL.
-     * TODO: Later this will trigger async pipeline processing.
+     * Validates the URL, triggers download, and saves the job.
      */
     public ScanResponse submitUrl(String url) {
+        // Validate URL platform
+        if (!urlParserService.isValidUrl(url)) {
+            throw new com.deepshield.backend.exception.UnsupportedPlatformException(url);
+        }
+
+        // Create job in PENDING state
         ScanJob job = new ScanJob();
         job.setInputType(InputType.URL);
         job.setInputSource(url);
         job.setStatus(ScanStatus.PENDING);
-
         ScanJob saved = scanJobRepository.save(job);
 
-        // TODO: Trigger async analysis pipeline here
-        // analysisPipelineService.runPipelineAsync(saved.getId());
+        // Update status to DOWNLOADING
+        saved.setStatus(ScanStatus.DOWNLOADING);
+        scanJobRepository.save(saved);
+
+        try {
+            // Download the video
+            log.info("Downloading video from URL: {}", url);
+            String filePath = videoDownloadService.download(url);
+
+            // Update job with downloaded file path
+            saved.setLocalFilePath(filePath);
+            saved.setStatus(ScanStatus.PROCESSING);
+            scanJobRepository.save(saved);
+
+            log.info("Video downloaded successfully: {}", filePath);
+
+            // TODO: Trigger async analysis pipeline here
+            // analysisPipelineService.runPipelineAsync(saved.getId());
+
+        } catch (Exception e) {
+            log.error("Download failed for URL: {}", url, e);
+            saved.setStatus(ScanStatus.FAILED);
+            scanJobRepository.save(saved);
+        }
 
         return mapToResponse(saved);
     }

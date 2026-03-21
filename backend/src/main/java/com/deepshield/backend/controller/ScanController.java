@@ -36,6 +36,7 @@ public class ScanController {
         if (request.getUrl() == null || request.getUrl().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
+        // ScanService handles validation, download, and error states
         ScanResponse response = scanService.submitUrl(request.getUrl());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
