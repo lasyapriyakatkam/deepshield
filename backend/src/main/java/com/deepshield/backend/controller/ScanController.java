@@ -1,12 +1,10 @@
 package com.deepshield.backend.controller;
 
+import com.deepshield.backend.model.dto.MLPredictionResult;
+import com.deepshield.backend.model.dto.MetadataResult;
 import com.deepshield.backend.model.dto.ScanRequest;
 import com.deepshield.backend.model.dto.ScanResponse;
-import com.deepshield.backend.service.FaceDetectionService;
-import com.deepshield.backend.service.KeyframeExtractorService;
-import com.deepshield.backend.service.MetadataAnalysisService;
-import com.deepshield.backend.model.dto.MetadataResult;
-import com.deepshield.backend.service.ScanService;
+import com.deepshield.backend.service.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +18,12 @@ import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.deepshield.backend.service.ScanService;
+import org.springframework.web.bind.annotation.*;
+import com.deepshield.backend.service.ResultAggregator;
+import com.deepshield.backend.service.ExplanationGeneratorService;
+import com.deepshield.backend.model.dto.ScanContext;
+import com.deepshield.backend.model.dto.AggregatedResult;
 
 /**
  * REST controller for all deepfake scan operations.
@@ -35,6 +39,9 @@ public class ScanController {
     private final KeyframeExtractorService keyframeExtractorService;
     private final FaceDetectionService faceDetectionService;
     private final MetadataAnalysisService metadataAnalysisService;
+    private final DeepfakeClassifierService deepfakeClassifierService;
+    private final ResultAggregator resultAggregator;
+    private final ExplanationGeneratorService explanationGeneratorService;
 
     /**
      * POST /api/scan/url
@@ -132,6 +139,32 @@ public class ScanController {
 
         // Step 3: Run metadata analysis
         MetadataResult metadataResult = metadataAnalysisService.analyze(filePath.toString());
+        result.put("metadata", metadataResult);
+
+        // Step 4: Run ML deepfake classification on each face
+        List<MLPredictionResult> predictions = deepfakeClassifierService.predictBatch(faces);
+
+        // Step 5: Build scan context for strategy pattern
+        ScanContext scanContext = ScanContext.builder()
+                .originalFilePath(filePath.toString())
+                .framePaths(frames)
+                .facePaths(faces)
+                .metadataResult(metadataResult)
+                .mlPredictions(predictions)
+                .build();
+
+        // Step 6: Run all analysis strategies and aggregate
+        AggregatedResult aggregated = resultAggregator.aggregate(scanContext);
+
+        // Step 7: Generate plain-English explanation
+        String explanation = explanationGeneratorService.generate(aggregated, scanContext);
+        aggregated.setExplanation(explanation);
+
+        // Build clean response
+        result.put("verdict", aggregated.getVerdict());
+        result.put("confidenceScore", aggregated.getConfidenceScore());
+        result.put("explanation", aggregated.getExplanation());
+        result.put("breakdown", aggregated.getBreakdown());
         result.put("metadata", metadataResult);
 
         return ResponseEntity.ok(result);
