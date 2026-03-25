@@ -8,6 +8,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import com.deepshield.backend.service.KeyframeExtractorService;
+import com.deepshield.backend.service.FaceDetectionService;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import java.io.IOException;
 import java.util.List;
@@ -23,6 +30,8 @@ import java.util.List;
 public class ScanController {
 
     private final ScanService scanService;
+    private final KeyframeExtractorService keyframeExtractorService;
+    private final FaceDetectionService faceDetectionService;
 
     /**
      * POST /api/scan/url
@@ -79,5 +88,45 @@ public class ScanController {
     public ResponseEntity<List<ScanResponse>> getHistory() {
         List<ScanResponse> history = scanService.getHistory();
         return ResponseEntity.ok(history);
+    }
+
+    /**
+     * POST /api/scan/test-pipeline
+     * Test endpoint to verify keyframe extraction and face detection.
+     * Accepts a video or image file and returns paths to detected faces.
+     * Remove this endpoint before production.
+     */
+    @PostMapping("/test-pipeline")
+    public ResponseEntity<Map<String, Object>> testPipeline(
+            @RequestParam("file") MultipartFile file) throws IOException {
+
+        // Save uploaded file temporarily
+        Path tempDir = Paths.get(System.getProperty("user.dir"), "uploads");
+        Files.createDirectories(tempDir);
+        String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
+        Path filePath = tempDir.resolve(fileName);
+        Files.copy(file.getInputStream(), filePath);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("originalFile", filePath.toString());
+
+        // Step 1: Extract keyframes (or just return the image)
+        List<String> frames;
+        String contentType = file.getContentType();
+        if (contentType != null && contentType.startsWith("video/")) {
+            frames = keyframeExtractorService.extractKeyframes(filePath.toString());
+            result.put("extractedFrames", frames.size());
+        } else {
+            frames = keyframeExtractorService.extractFromImage(filePath.toString());
+            result.put("extractedFrames", 1);
+        }
+        result.put("framePaths", frames);
+
+        // Step 2: Detect and crop faces
+        List<String> faces = faceDetectionService.detectAndCropFaces(frames);
+        result.put("detectedFaces", faces.size());
+        result.put("facePaths", faces);
+
+        return ResponseEntity.ok(result);
     }
 }
