@@ -2,22 +2,24 @@ package com.deepshield.backend.controller;
 
 import com.deepshield.backend.model.dto.ScanRequest;
 import com.deepshield.backend.model.dto.ScanResponse;
+import com.deepshield.backend.service.FaceDetectionService;
+import com.deepshield.backend.service.KeyframeExtractorService;
+import com.deepshield.backend.service.MetadataAnalysisService;
+import com.deepshield.backend.model.dto.MetadataResult;
 import com.deepshield.backend.service.ScanService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import com.deepshield.backend.service.KeyframeExtractorService;
-import com.deepshield.backend.service.FaceDetectionService;
+
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
-import java.util.Map;
-
-import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 /**
  * REST controller for all deepfake scan operations.
@@ -32,6 +34,7 @@ public class ScanController {
     private final ScanService scanService;
     private final KeyframeExtractorService keyframeExtractorService;
     private final FaceDetectionService faceDetectionService;
+    private final MetadataAnalysisService metadataAnalysisService;
 
     /**
      * POST /api/scan/url
@@ -126,6 +129,10 @@ public class ScanController {
         List<String> faces = faceDetectionService.detectAndCropFaces(frames);
         result.put("detectedFaces", faces.size());
         result.put("facePaths", faces);
+
+        // Step 3: Run metadata analysis
+        MetadataResult metadataResult = metadataAnalysisService.analyze(filePath.toString());
+        result.put("metadata", metadataResult);
 
         return ResponseEntity.ok(result);
     }
