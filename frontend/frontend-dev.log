@@ -1,9 +1,0 @@
-
-> deepshield-frontend@0.1.0 dev
-> vite --port 3000
-
-
-  VITE v4.3.9  ready in 2144 ms
-
-  ➜  Local:   http://localhost:3000/
-  ➜  Network: use --host to expose
