@@ -30,6 +30,7 @@ public class ScanService {
     private final ScanJobRepository scanJobRepository;
     private final VideoDownloadService videoDownloadService;
     private final UrlParserService urlParserService;
+    private final com.deepshield.backend.service.ScanJobProcessor scanJobProcessor;
 
     /** Directory where uploaded/downloaded files are stored (absolute path) */
     private static final Path UPLOAD_DIR = Paths.get(System.getProperty("user.dir"), "uploads");
@@ -106,8 +107,12 @@ public class ScanService {
 
         ScanJob saved = scanJobRepository.save(job);
 
-        // TODO: Trigger async analysis pipeline here
-        // analysisPipelineService.runPipelineAsync(saved.getId());
+        // Trigger async analysis pipeline immediately (non-blocking)
+        try {
+            scanJobProcessor.processJobById(saved.getId());
+        } catch (Exception e) {
+            log.warn("Failed to trigger async processing for upload job {}: {}", saved.getId(), e.getMessage());
+        }
 
         return mapToResponse(saved);
     }

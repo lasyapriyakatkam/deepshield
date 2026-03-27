@@ -24,6 +24,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -53,6 +54,9 @@ import java.util.List;
 @Slf4j
 public class DeepfakeClassifierService {
 
+    @Value("${ml.enabled:false}")
+    private boolean mlEnabled;
+
     /** The loaded DJL model */
     private ZooModel<Image, Classifications> model;
 
@@ -64,6 +68,10 @@ public class DeepfakeClassifierService {
      */
     @PostConstruct
     public void init() {
+        if (!mlEnabled) {
+            log.info("ML model loading is disabled (ml.enabled=false). Skipping model initialization.");
+            return;
+        }
         try {
             log.info("Loading deepfake classification model...");
 
