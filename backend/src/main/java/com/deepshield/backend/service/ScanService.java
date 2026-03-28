@@ -67,9 +67,12 @@ public class ScanService {
             scanJobRepository.save(saved);
 
             log.info("Video downloaded successfully: {}", filePath);
-
-            // TODO: Trigger async analysis pipeline here
-            // analysisPipelineService.runPipelineAsync(saved.getId());
+            // Trigger async analysis pipeline immediately (non-blocking)
+            try {
+                scanJobProcessor.processJobById(saved.getId());
+            } catch (Exception e) {
+                log.warn("Failed to trigger async processing for url job {}: {}", saved.getId(), e.getMessage());
+            }
 
         } catch (Exception e) {
             log.error("Download failed for URL: {}", url, e);
