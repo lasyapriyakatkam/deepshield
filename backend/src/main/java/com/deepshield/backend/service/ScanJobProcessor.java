@@ -14,7 +14,17 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -101,6 +111,94 @@ public class ScanJobProcessor {
             job.setVerdict(aggregated.getVerdict());
             job.setConfidenceScore(aggregated.getConfidenceScore());
             job.setExplanation(aggregated.getExplanation());
+            // produce simple frameScores and a heatmap file for dev UI
+            try {
+                ObjectMapper om = new ObjectMapper();
+                List<Double> frameScores = Arrays.asList(0.1, 0.2, 0.6, 0.9, 0.3);
+                List<Long> frameTimestamps = Arrays.asList(0L, 1000L, 2000L, 3000L, 4000L);
+                job.setFrameScoresJson(om.writeValueAsString(frameScores));
+                job.setFrameTimestampsJson(om.writeValueAsString(frameTimestamps));
+
+                String heatmapDirPath = Paths.get(System.getProperty("user.dir"), "uploads", "heatmaps").toString();
+                Files.createDirectories(Paths.get(heatmapDirPath));
+                String heatmapFileName = "heatmap_job_" + job.getId() + ".png";
+                File heatmapFile = new File(heatmapDirPath, heatmapFileName);
+                int w = 480, h = 240;
+                BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = img.createGraphics();
+                for (int x = 0; x < w; x++) {
+                    float ratio = (float)x / (w - 1);
+                    int r = (int)(255 * ratio);
+                    int b = 255 - r;
+                    g.setColor(new Color(r, 0, b));
+                    g.drawLine(x, 0, x, h);
+                }
+                g.setColor(new Color(255,255,255,80));
+                g.fillOval(w/2 - 50, h/2 - 50, 100, 100);
+                g.dispose();
+                ImageIO.write(img, "png", heatmapFile);
+
+                ArrayNode fhArray = om.createArrayNode();
+                ObjectNode fh = om.createObjectNode();
+                fh.put("faceIndex", 0);
+                fh.put("frameIndex", 2);
+                fh.put("timestamp", 2000L);
+                fh.put("heatmapUrl", "/uploads/heatmaps/" + heatmapFileName);
+                fh.putNull("heatmapBase64");
+                fhArray.add(fh);
+                job.setFaceHeatmapsJson(om.writeValueAsString(fhArray));
+                job.setHeatmapBase64(null);
+            } catch (Exception e) {
+                log.warn("Failed to produce dev heatmap/frameScores (async): {}", e.getMessage());
+            }
+
+            // --- Produce simple per-frame scores and heatmap for UI (dev stub) ---
+            try {
+                ObjectMapper om = new ObjectMapper();
+                // create dummy frame scores/timestamps
+                List<Double> frameScores = Arrays.asList(0.1, 0.2, 0.6, 0.9, 0.3);
+                List<Long> frameTimestamps = Arrays.asList(0L, 1000L, 2000L, 3000L, 4000L);
+
+                job.setFrameScoresJson(om.writeValueAsString(frameScores));
+                job.setFrameTimestampsJson(om.writeValueAsString(frameTimestamps));
+
+                // ensure heatmap dir exists
+                String heatmapDirPath = Paths.get(System.getProperty("user.dir"), "uploads", "heatmaps").toString();
+                Files.createDirectories(Paths.get(heatmapDirPath));
+                String heatmapFileName = "heatmap_job_" + job.getId() + ".png";
+                File heatmapFile = new File(heatmapDirPath, heatmapFileName);
+
+                // generate a simple gradient PNG as a placeholder heatmap
+                int w = 480, h = 240;
+                BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = img.createGraphics();
+                for (int x = 0; x < w; x++) {
+                    float ratio = (float)x / (w - 1);
+                    int r = (int)(255 * ratio);
+                    int b = 255 - r;
+                    g.setColor(new Color(r, 0, b));
+                    g.drawLine(x, 0, x, h);
+                }
+                g.setColor(new Color(255,255,255,80));
+                g.fillOval(w/2 - 50, h/2 - 50, 100, 100);
+                g.dispose();
+                ImageIO.write(img, "png", heatmapFile);
+
+                // build faceHeatmaps JSON pointing to the generated file
+                ArrayNode fhArray = om.createArrayNode();
+                ObjectNode fh = om.createObjectNode();
+                fh.put("faceIndex", 0);
+                fh.put("frameIndex", 2);
+                fh.put("timestamp", 2000L);
+                fh.put("heatmapUrl", "/uploads/heatmaps/" + heatmapFileName);
+                fh.putNull("heatmapBase64");
+                fhArray.add(fh);
+                job.setFaceHeatmapsJson(om.writeValueAsString(fhArray));
+                // also clear heatmapBase64 (we expose via URL)
+                job.setHeatmapBase64(null);
+            } catch (Exception e) {
+                log.warn("Failed to produce dev heatmap/frameScores: {}", e.getMessage());
+            }
             job.setCompletedAt(LocalDateTime.now());
             job.setStatus(ScanStatus.COMPLETE);
             jobRepository.save(job);

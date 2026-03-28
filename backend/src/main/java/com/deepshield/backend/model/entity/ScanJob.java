@@ -56,6 +56,18 @@ public class ScanJob {
     @Column(columnDefinition = "CLOB")
     private String heatmapBase64;
 
+    /** JSON-encoded per-keyframe confidence scores (array of doubles) */
+    @Column(columnDefinition = "CLOB")
+    private String frameScoresJson;
+
+    /** JSON-encoded per-keyframe timestamps (array of longs, ms) */
+    @Column(columnDefinition = "CLOB")
+    private String frameTimestampsJson;
+
+    /** JSON-encoded list of face heatmap descriptors (contains heatmapUrl, faceIndex, frameIndex, timestamp) */
+    @Column(columnDefinition = "CLOB")
+    private String faceHeatmapsJson;
+
     /** Timestamp when the scan was submitted */
     @Column(nullable = false)
     private LocalDateTime createdAt;

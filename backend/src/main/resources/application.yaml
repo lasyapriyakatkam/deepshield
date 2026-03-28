@@ -35,3 +35,9 @@ spring:
 # Server port
 server:
   port: 8080
+
+# Path (relative to project root) where generated heatmaps and related assets will be stored.
+# In production this should point to a persistent storage location. For dev we use 'uploads/heatmaps'.
+heatmap:
+  storage:
+    path: uploads/heatmaps
