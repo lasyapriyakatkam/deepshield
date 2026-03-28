@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Scheduled processor that picks up PENDING scan jobs and runs the analysis pipeline.
@@ -35,6 +36,11 @@ public class ScanJobProcessor {
     private final ExplanationGeneratorService explanationGeneratorService;
     private final PythonEnsembleService pythonEnsembleService;
 
+    /**
+     * Timestamp of the last time the processor ran (used for readiness checks).
+     */
+    private final AtomicReference<LocalDateTime> lastRun = new AtomicReference<>();
+
     @Scheduled(fixedDelayString = "${deepshield.processor.delay:2000}")
     @Transactional
     public void pollAndProcess() {
@@ -43,6 +49,9 @@ public class ScanJobProcessor {
             if (job == null) return;
 
             log.info("Picked job id={} for processing", job.getId());
+
+            // update last run timestamp immediately when we pick a job
+            lastRun.set(LocalDateTime.now());
 
             job.setStatus(ScanStatus.PROCESSING);
             jobRepository.save(job);
@@ -98,6 +107,9 @@ public class ScanJobProcessor {
 
             log.info("Job id={} completed", job.getId());
 
+            // update last run timestamp on successful completion
+            lastRun.set(LocalDateTime.now());
+
         } catch (Exception e) {
             log.error("Error in job processor: {}", e.getMessage(), e);
             // best-effort: mark job failed if possible
@@ -114,6 +126,13 @@ public class ScanJobProcessor {
                 log.warn("Failed to mark job as FAILED: {}", ex.getMessage());
             }
         }
+    }
+
+    /**
+     * Returns the last time the processor executed a run, or null if never run.
+     */
+    public LocalDateTime getLastRun() {
+        return lastRun.get();
     }
 
     /**
