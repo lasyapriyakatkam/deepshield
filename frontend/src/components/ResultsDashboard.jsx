@@ -153,27 +153,80 @@ export default function ResultsDashboard({ jobId }) {
   }
 
   return (
-    <div className="dashboard">
-      <h2>Results for job {jobId}</h2>
-      <div style={{display:'flex',gap:20}}>
-        <div style={{flex:'1 1 420px'}}>
-          <div style={{marginBottom:8}}><strong>Status:</strong> {result.status}</div>
-          <div style={{marginBottom:8}}><strong>Verdict:</strong> {verdict}</div>
-          <div style={{marginBottom:8}}><strong>Confidence:</strong> {typeof confidence === 'number' ? confidence : confidence}</div>
+    <div className="dashboard results-dashboard">
+      <div className="results-header">
+        <h2>Results for job {jobId}</h2>
+      </div>
+      {/* IO overview: Input | System | Output */}
+      <div className="io-overview">
+        <div className="io-card">
+          <div className="io-title">Input</div>
+          <div className="small-muted">{result.inputSource || result.originalFile || 'Uploaded file'}</div>
+          <div style={{marginTop:8}}>
+            {faceHeatmaps && faceHeatmaps.length > 0 ? (
+              <div className="io-heatmap"><img src={(faceHeatmaps[0].heatmapBase64 ? `data:image/png;base64,${faceHeatmaps[0].heatmapBase64}` : (faceHeatmaps[0].heatmapUrl && backendOrigin ? `${backendOrigin}${faceHeatmaps[0].heatmapUrl}` : faceHeatmaps[0].heatmapUrl))} alt="input-preview"/></div>
+            ) : (
+              <div className="io-heatmap" style={{display:'flex',alignItems:'center',justifyContent:'center',color:'#999'}}>Preview</div>
+            )}
+          </div>
+        </div>
 
-          <div style={{marginTop:12}}>
+        {/* System column removed per UI mock - Input and Output cards shown instead */}
+
+        <div className="io-card">
+          <div className="io-title">Output</div>
+          <div>
+            <div>
+              {verdict && (
+                <div className={`verdict-badge ${verdict === 'LIKELY_FAKE' ? 'verdict-fake' : verdict === 'LIKELY_REAL' ? 'verdict-real' : 'verdict-uncertain'}`}>
+                  {verdict}
+                </div>
+              )}
+            </div>
+            <div className="output-metrics">
+              <div className="small-muted">Confidence</div>
+              <div style={{fontWeight:700}}>{typeof confidence === 'number' ? (confidence * 100).toFixed(1) + '%' : confidence}</div>
+            </div>
+            <div style={{marginTop:10}}>
+              <div className="small-muted">Face heatmap</div>
+              {faceHeatmaps && faceHeatmaps.length > 0 ? (
+                <div className="io-heatmap" style={{marginTop:8}}>
+                  <img src={(faceHeatmaps[0].heatmapBase64 ? `data:image/png;base64,${faceHeatmaps[0].heatmapBase64}` : (faceHeatmaps[0].heatmapUrl && backendOrigin ? `${backendOrigin}${faceHeatmaps[0].heatmapUrl}` : faceHeatmaps[0].heatmapUrl))} alt="heatmap"/>
+                </div>
+              ) : (
+                <div className="small-muted">No face heatmap</div>
+              )}
+            </div>
+            <div style={{marginTop:10}}>
+              <div className="small-muted">Analysis</div>
+              <div style={{marginTop:6}}>
+                {breakdown && breakdown.length > 0 ? (
+                  <div>{breakdown.map((b, i) => <div key={i} style={{marginBottom:6}}><strong>{b.checkName || b.name}</strong>: <span style={{color:'#444'}}>{b.status}</span></div>)}</div>
+                ) : (
+                  <div className="small-muted">No breakdown available</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="results-grid">
+        <div className="left-column">
+          {/* Main heatmap section (detailed) */}
+          <div className="heatmap-section">
             <h4>Heatmap</h4>
             {heatmapSrc ? (
               <div style={{position:'relative',display:'inline-block',border:'1px solid #ddd'}}>
-                {/* If original image is available we could show it under heatmap; for now show heatmap alone */}
                 <img src={heatmapSrc} alt="heatmap" style={{maxWidth:'100%', display:'block'}} />
               </div>
             ) : (
-              <div style={{color:'#666'}}>No heatmap available for this job.</div>
+              <div className="small-muted">No heatmap available for this job.</div>
             )}
             <div style={{marginTop:10}}>
               <h5>Face heatmaps</h5>
-              <HeatmapThumbnails items={faceHeatmaps} />
+              <div className="heatmap-thumbnails">
+                <HeatmapThumbnails items={faceHeatmaps} />
+              </div>
               {hoverPreviewSrc && (
                 <div style={{position:'fixed',right:20,top:80,border:'1px solid #ccc',background:'#fff',padding:8,zIndex:999}}>
                   <img src={hoverPreviewSrc} alt="preview" style={{width:240,height:240,objectFit:'contain'}} />
@@ -181,28 +234,27 @@ export default function ResultsDashboard({ jobId }) {
               )}
             </div>
           </div>
-
         </div>
 
-        <div style={{flex:'1 1 320px'}}>
-          <h4>Analysis breakdown</h4>
+        <div className="right-column">
+          <h4 style={{marginTop:16}}>Analysis breakdown</h4>
           {breakdown.length === 0 ? (
-            <div style={{color:'#666'}}>No breakdown available.</div>
+            <div className="small-muted">No breakdown available.</div>
           ) : (
-            <table style={{width:'100%',borderCollapse:'collapse'}}>
+            <table className="breakdown-table">
               <thead>
                 <tr>
-                  <th style={{textAlign:'left',borderBottom:'1px solid #eee',padding:'6px'}}>Check</th>
-                  <th style={{textAlign:'right',borderBottom:'1px solid #eee',padding:'6px'}}>Score</th>
-                  <th style={{textAlign:'left',borderBottom:'1px solid #eee',padding:'6px'}}>Status</th>
+                  <th style={{textAlign:'left'}}>Check</th>
+                  <th style={{textAlign:'right'}}>Score</th>
+                  <th style={{textAlign:'left'}}>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {breakdown.map((b, idx)=> (
                   <tr key={idx}>
-                    <td style={{padding:'6px',verticalAlign:'top'}}>{b.name || b.checkName || b.title}</td>
-                    <td style={{padding:'6px',verticalAlign:'top',textAlign:'right'}}>{(b.score ?? b.confidence ?? 0).toFixed(2)}</td>
-                    <td style={{padding:'6px',verticalAlign:'top'}}>{b.status || b.note || b.description || '-'}</td>
+                    <td style={{verticalAlign:'top'}}>{b.name || b.checkName || b.title}</td>
+                    <td style={{verticalAlign:'top',textAlign:'right'}}>{(b.score ?? b.confidence ?? 0).toFixed(2)}</td>
+                    <td style={{verticalAlign:'top'}}>{b.status || b.note || b.description || '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -211,9 +263,9 @@ export default function ResultsDashboard({ jobId }) {
         </div>
       </div>
 
-      <div style={{marginTop:18}}>
+      <div className="chart-container">
         <h4>Per-frame confidence timeline</h4>
-  <SmallChart scores={normalizedFrameScores} />
+        <SmallChart scores={normalizedFrameScores} />
       </div>
     </div>
   )
