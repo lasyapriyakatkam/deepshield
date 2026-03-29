@@ -227,6 +227,15 @@ export default function ResultsDashboard({ jobId }) {
               <div className="heatmap-thumbnails">
                 <HeatmapThumbnails items={faceHeatmaps} />
               </div>
+              <div style={{marginTop:12}}>
+                <div style={{display:'flex',alignItems:'center',gap:12}}>
+                  <div style={{fontSize:13,fontWeight:700}}>Heatmap scale</div>
+                  <div className="heatmap-scale" style={{flex:1}}>
+                    <div className="heatmap-scale-bar" />
+                    <div className="heatmap-scale-labels"><span>Low suspicion</span><span>High suspicion</span></div>
+                  </div>
+                </div>
+              </div>
               {hoverPreviewSrc && (
                 <div style={{position:'fixed',right:20,top:80,border:'1px solid #ccc',background:'#fff',padding:8,zIndex:999}}>
                   <img src={hoverPreviewSrc} alt="preview" style={{width:240,height:240,objectFit:'contain'}} />

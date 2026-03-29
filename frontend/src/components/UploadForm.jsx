@@ -53,10 +53,10 @@ export default function UploadForm({ onJobCreated }) {
       <h2>Upload a file</h2>
       <input type="file" accept="image/*,video/*" onChange={onFileChange} />
       {previewSrc && (
-        <div style={{marginTop:8}}>
-          <div style={{fontSize:12,color:'#666',marginBottom:4}}>Preview</div>
-          <div style={{width:160,height:120,overflow:'hidden',border:'1px solid #eee'}}>
-            <img src={previewSrc} alt="preview" style={{width:'100%',height:'100%',objectFit:'contain'}} />
+        <div style={{marginTop:8}} className="upload-preview-wrap">
+          <div style={{fontSize:12,color:'#666',marginBottom:6}}>Preview</div>
+          <div className="upload-preview">
+            <img src={previewSrc} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover'}} />
           </div>
         </div>
       )}

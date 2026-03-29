@@ -38,8 +38,13 @@ export default function UrlForm({ onJobCreated }) {
   return (
     <form className="url-form" onSubmit={submit}>
       <h2>Scan a URL</h2>
-      <input value={url} onChange={e => setUrl(e.target.value)} placeholder="YouTube or video URL" />
-      <button type="submit" disabled={loading}>{loading ? 'Submitting...' : 'Submit'}</button>
+      <div className="url-input-group">
+        <div className="url-input-icon">🔗</div>
+        <input className="url-input" value={url} onChange={e => setUrl(e.target.value)} placeholder="YouTube or video URL" />
+      </div>
+      <div style={{marginTop:10}}>
+        <button type="submit" disabled={loading}>{loading ? 'Submitting...' : 'Submit'}</button>
+      </div>
       {error && <div className="error">{error}</div>}
     </form>
   )
