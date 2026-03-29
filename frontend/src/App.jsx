@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import UrlForm from './components/UrlForm'
 import UploadForm from './components/UploadForm'
 import ResultsDashboard from './components/ResultsDashboard'
+import ErrorBoundary from './components/ErrorBoundary'
 
 export default function App() {
   const [jobId, setJobId] = useState(null)
@@ -13,7 +14,9 @@ export default function App() {
         <UrlForm onJobCreated={setJobId} />
         <UploadForm onJobCreated={setJobId} />
       </div>
-      <ResultsDashboard jobId={jobId} />
+      <ErrorBoundary>
+        <ResultsDashboard jobId={jobId} />
+      </ErrorBoundary>
     </div>
   )
 }

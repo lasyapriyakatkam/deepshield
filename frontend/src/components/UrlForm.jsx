@@ -1,6 +1,9 @@
 import React, { useState } from 'react'
 import axios from 'axios'
 
+// Allows overriding the API origin for static previews or non-proxied servers.
+const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE) ? import.meta.env.VITE_API_BASE : ''
+
 export default function UrlForm({ onJobCreated }) {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
@@ -21,7 +24,7 @@ export default function UrlForm({ onJobCreated }) {
     if (!normalized) return setError('Please enter a URL')
     setLoading(true)
     try {
-      const resp = await axios.post('/api/scan/url', { url: normalized })
+  const resp = await axios.post(`${API_BASE}/api/scan/url`, { url: normalized })
       if (resp && resp.data && resp.data.id) {
         onJobCreated(resp.data.id)
       }

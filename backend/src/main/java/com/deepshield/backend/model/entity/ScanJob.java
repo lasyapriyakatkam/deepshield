@@ -68,6 +68,10 @@ public class ScanJob {
     @Column(columnDefinition = "CLOB")
     private String faceHeatmapsJson;
 
+    /** JSON-encoded analysis breakdown (list of AnalysisDetail entries) */
+    @Column(columnDefinition = "CLOB")
+    private String breakdownJson;
+
     /** Timestamp when the scan was submitted */
     @Column(nullable = false)
     private LocalDateTime createdAt;

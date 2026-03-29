@@ -13,6 +13,13 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       }
+      ,
+      // Proxy uploaded/static files (heatmaps) so images come from backend
+      '/uploads': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false,
+      }
     }
   }
 })

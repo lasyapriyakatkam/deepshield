@@ -26,6 +26,8 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -45,6 +47,7 @@ public class ScanJobProcessor {
     private final ResultAggregator resultAggregator;
     private final ExplanationGeneratorService explanationGeneratorService;
     private final PythonEnsembleService pythonEnsembleService;
+    private final PythonGradCamService pythonGradCamService;
 
     /**
      * Timestamp of the last time the processor ran (used for readiness checks).
@@ -111,94 +114,90 @@ public class ScanJobProcessor {
             job.setVerdict(aggregated.getVerdict());
             job.setConfidenceScore(aggregated.getConfidenceScore());
             job.setExplanation(aggregated.getExplanation());
-            // produce simple frameScores and a heatmap file for dev UI
+            // produce per-frame scores and per-face heatmaps
             try {
                 ObjectMapper om = new ObjectMapper();
-                List<Double> frameScores = Arrays.asList(0.1, 0.2, 0.6, 0.9, 0.3);
-                List<Long> frameTimestamps = Arrays.asList(0L, 1000L, 2000L, 3000L, 4000L);
+                // compute per-frame average fakeConfidence using mlPredictions and face source paths
+        List<Double> frameScores = computeFrameScores(scanContext);
+        int framesCount = scanContext.getFramePaths() == null ? 0 : scanContext.getFramePaths().size();
+        // Defensive: ensure frameScores is non-null and has at least one element matching framesCount
+        if (frameScores == null || frameScores.isEmpty()) {
+            int sz = framesCount == 0 ? 1 : framesCount;
+            Double[] fallback = new Double[sz];
+            Arrays.fill(fallback, 0.5);
+            frameScores = Arrays.asList(fallback);
+            log.info("Job id={} — computed frameScores was empty; persisting neutral fallback of size={}", job.getId(), frameScores.size());
+        }
+        log.info("Job id={} — framesCount={}, predsCount={}, computed frameScores size={}", job.getId(), framesCount, (predictions == null ? 0 : predictions.size()), frameScores == null ? 0 : frameScores.size());
+        List<Long> frameTimestamps = IntStream.range(0, framesCount == 0 ? Math.max(1, frameScores.size()) : framesCount)
+            .mapToObj(i -> i * 1000L)
+            .collect(Collectors.toList());
                 job.setFrameScoresJson(om.writeValueAsString(frameScores));
                 job.setFrameTimestampsJson(om.writeValueAsString(frameTimestamps));
 
                 String heatmapDirPath = Paths.get(System.getProperty("user.dir"), "uploads", "heatmaps").toString();
                 Files.createDirectories(Paths.get(heatmapDirPath));
-                String heatmapFileName = "heatmap_job_" + job.getId() + ".png";
-                File heatmapFile = new File(heatmapDirPath, heatmapFileName);
-                int w = 480, h = 240;
-                BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g = img.createGraphics();
-                for (int x = 0; x < w; x++) {
-                    float ratio = (float)x / (w - 1);
-                    int r = (int)(255 * ratio);
-                    int b = 255 - r;
-                    g.setColor(new Color(r, 0, b));
-                    g.drawLine(x, 0, x, h);
-                }
-                g.setColor(new Color(255,255,255,80));
-                g.fillOval(w/2 - 50, h/2 - 50, 100, 100);
-                g.dispose();
-                ImageIO.write(img, "png", heatmapFile);
 
                 ArrayNode fhArray = om.createArrayNode();
-                ObjectNode fh = om.createObjectNode();
-                fh.put("faceIndex", 0);
-                fh.put("frameIndex", 2);
-                fh.put("timestamp", 2000L);
-                fh.put("heatmapUrl", "/uploads/heatmaps/" + heatmapFileName);
-                fh.putNull("heatmapBase64");
-                fhArray.add(fh);
+                // For each face prediction, request per-face Grad-CAM from python service when available
+                for (int i = 0; i < predictions.size(); i++) {
+                    MLPredictionResult p = predictions.get(i);
+                    String facePath = p.getSourceImagePath();
+                    String heatmapFileName = "face_heatmap_job_" + job.getId() + "_face_" + i + ".png";
+                    File outFile = new File(heatmapDirPath, heatmapFileName);
+                    Optional<String> urlOpt = pythonGradCamService.generateAndSaveHeatmap(facePath, outFile);
+                    ObjectNode fh = om.createObjectNode();
+                    fh.put("faceIndex", i);
+                    fh.put("frameIndex", findFrameIndexForFace(scanContext.getFramePaths(), facePath));
+                    fh.put("timestamp", 0L);
+                    if (urlOpt.isPresent()) {
+                        fh.put("heatmapUrl", urlOpt.get());
+                        fh.putNull("heatmapBase64");
+                    } else if (p.getHeatmapBase64() != null) {
+                        // save inline heatmap to file
+                        byte[] bytes = java.util.Base64.getDecoder().decode(p.getHeatmapBase64());
+                        Files.write(outFile.toPath(), bytes);
+                        fh.put("heatmapUrl", "/uploads/heatmaps/" + heatmapFileName);
+                        fh.putNull("heatmapBase64");
+                    } else {
+                        fh.putNull("heatmapUrl");
+                        fh.putNull("heatmapBase64");
+                    }
+                    fhArray.add(fh);
+                }
                 job.setFaceHeatmapsJson(om.writeValueAsString(fhArray));
-                job.setHeatmapBase64(null);
+                // Persist analysis breakdown so frontend can show per-check details
+                try {
+                    job.setBreakdownJson(om.writeValueAsString(aggregated.getBreakdown()));
+                } catch (Exception ex) {
+                    log.warn("Failed to serialize breakdown for job {}: {}", job.getId(), ex.getMessage());
+                }
             } catch (Exception e) {
                 log.warn("Failed to produce dev heatmap/frameScores (async): {}", e.getMessage());
-            }
-
-            // --- Produce simple per-frame scores and heatmap for UI (dev stub) ---
-            try {
-                ObjectMapper om = new ObjectMapper();
-                // create dummy frame scores/timestamps
-                List<Double> frameScores = Arrays.asList(0.1, 0.2, 0.6, 0.9, 0.3);
-                List<Long> frameTimestamps = Arrays.asList(0L, 1000L, 2000L, 3000L, 4000L);
-
-                job.setFrameScoresJson(om.writeValueAsString(frameScores));
-                job.setFrameTimestampsJson(om.writeValueAsString(frameTimestamps));
-
-                // ensure heatmap dir exists
-                String heatmapDirPath = Paths.get(System.getProperty("user.dir"), "uploads", "heatmaps").toString();
-                Files.createDirectories(Paths.get(heatmapDirPath));
-                String heatmapFileName = "heatmap_job_" + job.getId() + ".png";
-                File heatmapFile = new File(heatmapDirPath, heatmapFileName);
-
-                // generate a simple gradient PNG as a placeholder heatmap
-                int w = 480, h = 240;
-                BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g = img.createGraphics();
-                for (int x = 0; x < w; x++) {
-                    float ratio = (float)x / (w - 1);
-                    int r = (int)(255 * ratio);
-                    int b = 255 - r;
-                    g.setColor(new Color(r, 0, b));
-                    g.drawLine(x, 0, x, h);
+                // Ensure we persist empty/default values so API always returns predictable fields
+                try {
+                    ObjectMapper om2 = new ObjectMapper();
+                    if (job.getFrameScoresJson() == null) {
+                        List<Double> fallbackScores = computeFrameScores(scanContext);
+                        job.setFrameScoresJson(om2.writeValueAsString(fallbackScores));
+                    }
+                    if (job.getFrameTimestampsJson() == null) {
+                        // generate timestamps to match the fallbackScores length
+                        List<Double> fs = (job.getFrameScoresJson() == null) ? computeFrameScores(scanContext)
+                                : null;
+                        int n = fs == null ? (scanContext.getFramePaths() == null ? 1 : scanContext.getFramePaths().size()) : fs.size();
+                        List<Long> fallbackTs = IntStream.range(0, n).mapToObj(i -> i * 1000L).collect(Collectors.toList());
+                        job.setFrameTimestampsJson(om2.writeValueAsString(fallbackTs));
+                    }
+                    if (job.getFaceHeatmapsJson() == null) {
+                        job.setFaceHeatmapsJson(om2.createArrayNode().toString());
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to write fallback heatmap/frameScores JSON: {}", ex.getMessage());
                 }
-                g.setColor(new Color(255,255,255,80));
-                g.fillOval(w/2 - 50, h/2 - 50, 100, 100);
-                g.dispose();
-                ImageIO.write(img, "png", heatmapFile);
-
-                // build faceHeatmaps JSON pointing to the generated file
-                ArrayNode fhArray = om.createArrayNode();
-                ObjectNode fh = om.createObjectNode();
-                fh.put("faceIndex", 0);
-                fh.put("frameIndex", 2);
-                fh.put("timestamp", 2000L);
-                fh.put("heatmapUrl", "/uploads/heatmaps/" + heatmapFileName);
-                fh.putNull("heatmapBase64");
-                fhArray.add(fh);
-                job.setFaceHeatmapsJson(om.writeValueAsString(fhArray));
-                // also clear heatmapBase64 (we expose via URL)
-                job.setHeatmapBase64(null);
-            } catch (Exception e) {
-                log.warn("Failed to produce dev heatmap/frameScores: {}", e.getMessage());
             }
+
+            
             job.setCompletedAt(LocalDateTime.now());
             job.setStatus(ScanStatus.COMPLETE);
             jobRepository.save(job);
@@ -224,6 +223,69 @@ public class ScanJobProcessor {
                 log.warn("Failed to mark job as FAILED: {}", ex.getMessage());
             }
         }
+    }
+
+    /**
+     * Compute per-frame average fakeConfidence. We map each prediction's sourceImagePath
+     * back to the frame it was extracted from (by filename contains match) and average
+     * fakeConfidence across faces for each frame.
+     */
+    private List<Double> computeFrameScores(ScanContext context) {
+        List<String> frames = context.getFramePaths();
+        List<MLPredictionResult> preds = context.getMlPredictions();
+        if (frames == null || frames.isEmpty()) {
+            // no frames — single neutral score
+            return Arrays.asList(0.5);
+        }
+        if (preds == null || preds.isEmpty()) {
+            // no predictions — return neutral score for each frame so lengths match
+            Double[] fallback = new Double[frames.size()];
+            for (int i = 0; i < frames.size(); i++) fallback[i] = 0.5;
+            return Arrays.asList(fallback);
+        }
+        // If there is exactly one frame (image input) but multiple face predictions,
+        // map all predictions to the single frame to produce meaningful per-frame avg.
+        if (frames.size() == 1) {
+            double sum = 0.0;
+            int count = 0;
+            for (MLPredictionResult p : preds) {
+                if (p == null) continue;
+                Double fc = p.getFakeConfidence();
+                if (fc != null) {
+                    sum += fc;
+                    count++;
+                }
+            }
+            double avg = count == 0 ? 0.5 : (sum / count);
+            return Arrays.asList(avg);
+        }
+        double[] sums = new double[frames.size()];
+        int[] counts = new int[frames.size()];
+        for (MLPredictionResult p : preds) {
+            String src = p.getSourceImagePath();
+            if (src == null) continue;
+            for (int i = 0; i < frames.size(); i++) {
+                if (src.contains(new File(frames.get(i)).getName())) {
+                    sums[i] += p.getFakeConfidence() == null ? 0.0 : p.getFakeConfidence();
+                    counts[i]++;
+                    break;
+                }
+            }
+        }
+        Double[] out = new Double[frames.size()];
+        for (int i = 0; i < frames.size(); i++) {
+            out[i] = counts[i] == 0 ? 0.5 : sums[i] / counts[i];
+        }
+        return Arrays.asList(out);
+    }
+
+    private int findFrameIndexForFace(List<String> frames, String facePath) {
+        if (frames == null || frames.isEmpty() || facePath == null) return -1;
+        String faceName = new File(facePath).getName();
+        for (int i = 0; i < frames.size(); i++) {
+            if (faceName.contains(new File(frames.get(i)).getName())) return i;
+        }
+        return -1;
     }
 
     /**
@@ -271,6 +333,8 @@ public class ScanJobProcessor {
 
             AggregatedResult aggregated = resultAggregator.aggregate(scanContext);
 
+            // helper methods are below
+
             Optional<Double> ensemble = pythonEnsembleService.callEnsemble(scanContext, aggregated);
             ensemble.ifPresent(aggregated::setConfidenceScore);
 
@@ -280,6 +344,84 @@ public class ScanJobProcessor {
             job.setVerdict(aggregated.getVerdict());
             job.setConfidenceScore(aggregated.getConfidenceScore());
             job.setExplanation(aggregated.getExplanation());
+
+            // produce per-frame scores and per-face heatmaps (same as scheduled path)
+            try {
+                ObjectMapper om = new ObjectMapper();
+        List<Double> frameScores = computeFrameScores(scanContext);
+        int framesCount = scanContext.getFramePaths() == null ? 0 : scanContext.getFramePaths().size();
+        if (frameScores == null || frameScores.isEmpty()) {
+            int sz = framesCount == 0 ? 1 : framesCount;
+            Double[] fallback = new Double[sz];
+            Arrays.fill(fallback, 0.5);
+            frameScores = Arrays.asList(fallback);
+            log.info("(async) Job id={} — computed frameScores was empty; persisting neutral fallback of size={}", job.getId(), frameScores.size());
+        }
+        log.info("(async) Job id={} — framesCount={}, predsCount={}, computed frameScores size={}", job.getId(), framesCount, (predictions == null ? 0 : predictions.size()), frameScores == null ? 0 : frameScores.size());
+        List<Long> frameTimestamps = IntStream.range(0, framesCount == 0 ? Math.max(1, frameScores.size()) : framesCount)
+            .mapToObj(i -> i * 1000L)
+            .collect(Collectors.toList());
+                job.setFrameScoresJson(om.writeValueAsString(frameScores));
+                job.setFrameTimestampsJson(om.writeValueAsString(frameTimestamps));
+
+                String heatmapDirPath = Paths.get(System.getProperty("user.dir"), "uploads", "heatmaps").toString();
+                Files.createDirectories(Paths.get(heatmapDirPath));
+
+                ArrayNode fhArray = om.createArrayNode();
+                for (int i = 0; i < predictions.size(); i++) {
+                    MLPredictionResult p = predictions.get(i);
+                    String facePath = p.getSourceImagePath();
+                    String heatmapFileName = "face_heatmap_job_" + job.getId() + "_face_" + i + ".png";
+                    File outFile = new File(heatmapDirPath, heatmapFileName);
+                    Optional<String> urlOpt = pythonGradCamService.generateAndSaveHeatmap(facePath, outFile);
+                    ObjectNode fh = om.createObjectNode();
+                    fh.put("faceIndex", i);
+                    fh.put("frameIndex", findFrameIndexForFace(scanContext.getFramePaths(), facePath));
+                    fh.put("timestamp", 0L);
+                    if (urlOpt.isPresent()) {
+                        fh.put("heatmapUrl", urlOpt.get());
+                        fh.putNull("heatmapBase64");
+                    } else if (p.getHeatmapBase64() != null) {
+                        byte[] bytes = java.util.Base64.getDecoder().decode(p.getHeatmapBase64());
+                        Files.write(outFile.toPath(), bytes);
+                        fh.put("heatmapUrl", "/uploads/heatmaps/" + heatmapFileName);
+                        fh.putNull("heatmapBase64");
+                    } else {
+                        fh.putNull("heatmapUrl");
+                        fh.putNull("heatmapBase64");
+                    }
+                    fhArray.add(fh);
+                }
+                job.setFaceHeatmapsJson(om.writeValueAsString(fhArray));
+                try {
+                    job.setBreakdownJson(om.writeValueAsString(aggregated.getBreakdown()));
+                } catch (Exception ex) {
+                    log.warn("Failed to serialize breakdown for job {} (async): {}", job.getId(), ex.getMessage());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to produce dev heatmap/frameScores (async): {}", e.getMessage());
+                // Ensure API fields are present even if heatmap generation failed
+                try {
+                    ObjectMapper om2 = new ObjectMapper();
+                    if (job.getFrameScoresJson() == null) {
+                        List<Double> fallbackScores = computeFrameScores(scanContext);
+                        job.setFrameScoresJson(om2.writeValueAsString(fallbackScores));
+                    }
+                    if (job.getFrameTimestampsJson() == null) {
+                        List<Double> fs = (job.getFrameScoresJson() == null) ? computeFrameScores(scanContext)
+                                : null;
+                        int n = fs == null ? (scanContext.getFramePaths() == null ? 1 : scanContext.getFramePaths().size()) : fs.size();
+                        List<Long> fallbackTs = IntStream.range(0, n).mapToObj(i -> i * 1000L).collect(Collectors.toList());
+                        job.setFrameTimestampsJson(om2.writeValueAsString(fallbackTs));
+                    }
+                    if (job.getFaceHeatmapsJson() == null) {
+                        job.setFaceHeatmapsJson(om2.createArrayNode().toString());
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to write fallback heatmap/frameScores JSON: {}", ex.getMessage());
+                }
+            }
+
             job.setCompletedAt(LocalDateTime.now());
             job.setStatus(ScanStatus.COMPLETE);
             jobRepository.save(job);
