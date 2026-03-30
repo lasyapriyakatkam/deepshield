@@ -1,0 +1,10 @@
+ml:
+  enabled: true
+  # If you don't have DJL native backends available locally, enable devStub
+  # to use a lightweight Java-only stub classifier for development.
+  devStub: true
+
+# Use dev profile defaults for heatmap storage
+heatmap:
+  storage:
+    path: uploads/heatmaps

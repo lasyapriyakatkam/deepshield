@@ -24,6 +24,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -53,6 +54,15 @@ import java.util.List;
 @Slf4j
 public class DeepfakeClassifierService {
 
+    @Value("${ml.enabled:false}")
+    private boolean mlEnabled;
+
+    @Value("${ml.devStub:false}")
+    private boolean mlDevStub;
+
+    // If true, use a lightweight Java-only stub predictor in dev instead of DJL
+    private boolean devStubEnabled = false;
+
     /** The loaded DJL model */
     private ZooModel<Image, Classifications> model;
 
@@ -64,6 +74,15 @@ public class DeepfakeClassifierService {
      */
     @PostConstruct
     public void init() {
+        if (!mlEnabled) {
+            log.info("ML model loading is disabled (ml.enabled=false). Skipping model initialization.");
+            return;
+        }
+        if (mlDevStub) {
+            devStubEnabled = true;
+            log.info("ML devStub enabled (ml.devStub=true). Using lightweight Java stub for predictions.");
+            return;
+        }
         try {
             log.info("Loading deepfake classification model...");
 
@@ -107,6 +126,23 @@ public class DeepfakeClassifierService {
      * @return MLPredictionResult with confidence scores and label
      */
     public MLPredictionResult predict(String imagePath) {
+        if (devStubEnabled) {
+            // Deterministic pseudo-confidence based on filename hash for dev
+            int h = Math.abs(imagePath.hashCode());
+            double fakeProb = 0.2 + (h % 61) / 100.0; // range ~0.2 - 0.81
+            double realProb = 1.0 - fakeProb;
+            String label = fakeProb > 0.5 ? "FAKE" : "REAL";
+            String heatmap = generateSimpleHeatmap(imagePath, fakeProb);
+            log.info("(devStub) Prediction for {}: {} (fake={})", imagePath, label, String.format("%.4f", fakeProb));
+            return MLPredictionResult.builder()
+                    .fakeConfidence(fakeProb)
+                    .realConfidence(realProb)
+                    .label(label)
+                    .heatmapBase64(heatmap)
+                    .sourceImagePath(imagePath)
+                    .build();
+        }
+
         if (model == null) {
             throw new MLServiceException("Classification model is not loaded");
         }

@@ -1,0 +1,20 @@
+# Runtime artifacts
+backend.log
+backend.pid
+backend/backend.log
+backend/backend.pid
+frontend/frontend-dev.log
+frontend/frontend.pid
+# uploads (test artifacts)
+uploads/
+# OS files
+.DS_Store
+# IDE
+.vscode/
+.idea/
+# Node
+node_modules/
+# Logs
+*.log
+# Python
+__pycache__/

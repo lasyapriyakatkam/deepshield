@@ -16,4 +16,9 @@ public interface ScanJobRepository extends JpaRepository<ScanJob, Long> {
      * Returns all scan jobs ordered by most recent first.
      */
     List<ScanJob> findAllByOrderByCreatedAtDesc();
+
+    /**
+     * Find the oldest job with the given status (useful for processing queue semantics).
+     */
+    ScanJob findTopByStatusOrderByCreatedAtAsc(com.deepshield.backend.model.enums.ScanStatus status);
 }

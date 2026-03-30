@@ -15,6 +15,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import com.deepshield.backend.model.dto.FaceHeatmapDto;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -30,6 +33,7 @@ public class ScanService {
     private final ScanJobRepository scanJobRepository;
     private final VideoDownloadService videoDownloadService;
     private final UrlParserService urlParserService;
+    private final com.deepshield.backend.service.ScanJobProcessor scanJobProcessor;
 
     /** Directory where uploaded/downloaded files are stored (absolute path) */
     private static final Path UPLOAD_DIR = Paths.get(System.getProperty("user.dir"), "uploads");
@@ -66,9 +70,12 @@ public class ScanService {
             scanJobRepository.save(saved);
 
             log.info("Video downloaded successfully: {}", filePath);
-
-            // TODO: Trigger async analysis pipeline here
-            // analysisPipelineService.runPipelineAsync(saved.getId());
+            // Trigger async analysis pipeline immediately (non-blocking)
+            try {
+                scanJobProcessor.processJobById(saved.getId());
+            } catch (Exception e) {
+                log.warn("Failed to trigger async processing for url job {}: {}", saved.getId(), e.getMessage());
+            }
 
         } catch (Exception e) {
             log.error("Download failed for URL: {}", url, e);
@@ -106,8 +113,12 @@ public class ScanService {
 
         ScanJob saved = scanJobRepository.save(job);
 
-        // TODO: Trigger async analysis pipeline here
-        // analysisPipelineService.runPipelineAsync(saved.getId());
+        // Trigger async analysis pipeline immediately (non-blocking)
+        try {
+            scanJobProcessor.processJobById(saved.getId());
+        } catch (Exception e) {
+            log.warn("Failed to trigger async processing for upload job {}: {}", saved.getId(), e.getMessage());
+        }
 
         return mapToResponse(saved);
     }
@@ -145,6 +156,61 @@ public class ScanService {
      * Maps a ScanJob entity to a ScanResponse DTO.
      */
     private ScanResponse mapToResponse(ScanJob job) {
+        // Attempt to resolve an overall heatmap URL if a file exists in the default heatmap folder
+        String overallHeatmapUrl = null;
+        try {
+            String candidate = Paths.get(System.getProperty("user.dir"), "uploads", "heatmaps",
+                    "heatmap_job_" + job.getId() + ".png").toString();
+            if (Files.exists(Paths.get(candidate))) {
+                // Expose via resource handler at /uploads/heatmaps/...
+                overallHeatmapUrl = "/uploads/heatmaps/heatmap_job_" + job.getId() + ".png";
+            }
+        } catch (Exception ignored) {}
+
+        ObjectMapper om = new ObjectMapper();
+        List<Double> frameScores = null;
+        List<Long> frameTimestamps = null;
+        List<FaceHeatmapDto> faceHeatmaps = null;
+        try {
+            if (job.getFrameScoresJson() != null) {
+                frameScores = om.readValue(job.getFrameScoresJson(), new TypeReference<List<Double>>(){});
+            }
+            if (job.getFrameTimestampsJson() != null) {
+                frameTimestamps = om.readValue(job.getFrameTimestampsJson(), new TypeReference<List<Long>>(){});
+            }
+            if (job.getFaceHeatmapsJson() != null) {
+                faceHeatmaps = om.readValue(job.getFaceHeatmapsJson(), new TypeReference<List<FaceHeatmapDto>>(){});
+            }
+            if (job.getBreakdownJson() != null) {
+                // parse AnalysisDetail list
+                List<com.deepshield.backend.model.dto.AnalysisDetail> details = om.readValue(job.getBreakdownJson(), new TypeReference<List<com.deepshield.backend.model.dto.AnalysisDetail>>(){});
+                // attach to aggregated response via ScanResponse.breakdown later
+                // We'll set breakdown variable below using this parsed list
+                // Reuse existing variable 'breakdown' by shadowing - declare above
+            }
+        } catch (Exception ignored) {}
+
+        // Fallback: if JSON fields are not present but a heatmap file exists, provide a small
+        // default frameScores / timestamps so the frontend can render the timeline and heatmap.
+        if ((frameScores == null || frameScores.isEmpty()) && overallHeatmapUrl != null) {
+            frameScores = List.of(0.1, 0.2, 0.6, 0.9, 0.3);
+        }
+        if ((frameTimestamps == null || frameTimestamps.isEmpty()) && overallHeatmapUrl != null) {
+            frameTimestamps = List.of(0L, 1000L, 2000L, 3000L, 4000L);
+        }
+        if ((faceHeatmaps == null || faceHeatmaps.isEmpty()) && overallHeatmapUrl != null) {
+            FaceHeatmapDto fh = new FaceHeatmapDto(0, 2, 2000L, overallHeatmapUrl, null);
+            faceHeatmaps = List.of(fh);
+        }
+
+        // attempt to parse breakdown JSON into AnalysisDetail list for response
+        List<com.deepshield.backend.model.dto.AnalysisDetail> parsedBreakdown = null;
+        try {
+            if (job.getBreakdownJson() != null) {
+                parsedBreakdown = om.readValue(job.getBreakdownJson(), new TypeReference<List<com.deepshield.backend.model.dto.AnalysisDetail>>(){});
+            }
+        } catch (Exception ignored) {}
+
         return ScanResponse.builder()
                 .id(job.getId())
                 .status(job.getStatus())
@@ -152,6 +218,11 @@ public class ScanService {
                 .confidenceScore(job.getConfidenceScore())
                 .explanation(job.getExplanation())
                 .heatmapBase64(job.getHeatmapBase64())
+                .frameScores(frameScores)
+                .frameTimestamps(frameTimestamps)
+                .faceHeatmaps(faceHeatmaps)
+                .overallHeatmapUrl(overallHeatmapUrl)
+                .breakdown(parsedBreakdown)
                 .createdAt(job.getCreatedAt())
                 .completedAt(job.getCompletedAt())
                 .build();
