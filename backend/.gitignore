@@ -4,6 +4,7 @@ uploads/
 downloads/
 frames/
 faces/
+src/main/resources/model/*.onnx
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

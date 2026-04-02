@@ -107,6 +107,13 @@
 			<artifactId>pytorch-engine</artifactId>
 			<version>0.31.1</version>
 		</dependency>
+
+		<!-- DJL ONNX Runtime Engine -->
+		<dependency>
+			<groupId>ai.djl.onnxruntime</groupId>
+			<artifactId>onnxruntime-engine</artifactId>
+			<version>0.31.1</version>
+		</dependency>
 	</dependencies>
 
 	<build>
