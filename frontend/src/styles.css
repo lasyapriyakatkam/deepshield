@@ -1,0 +1,85 @@
+:root{ --bg:#f7f8fb; --card:#fff; --accent:#2b6cb0 }
+body{ font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background:var(--bg); margin:0; padding:24px }
+.container{ max-width:1100px; margin:0 auto }
+.app-root{ min-height:100vh; background: radial-gradient(circle at 10% 10%, #f8fdff 0%, transparent 20%), linear-gradient(180deg,#f3f6fb 0%, #eef2f6 100%); padding-bottom:60px }
+.app-header{ display:flex; align-items:center; justify-content:space-between; padding:18px 0 }
+.brand{ display:flex; align-items:center; gap:12px }
+.brand-logo{ height:40px }
+.tagline{ color:#334155; font-size:14px; opacity:.9 }
+.forms{ display:flex; gap:20px }
+.hero-cards{ margin-top:14px }
+/* make URL / Upload forms look like hero cards */
+.url-form, form{ background:linear-gradient(180deg,#ffffff,#fbfdff); padding:20px; border-radius:12px; box-shadow:0 6px 18px rgba(11,20,40,0.06); flex:1 }
+.url-form h2{ margin-top:0 }
+.url-form input{ padding:12px }
+.upload-form .preview{ border-radius:8px; overflow:hidden; width:140px; height:140px }
+input[type=text], input[type=file], input{ width:100%; padding:8px; margin-top:8px; margin-bottom:8px; }
+button{ background:var(--accent); color:#fff; border:0; padding:8px 12px; border-radius:6px }
+.error{ color:#c53030; margin-top:8px }
+.dashboard{ margin-top:16px; background:var(--card); padding:12px; border-radius:8px }
+.breakdown{ white-space:pre-wrap; background:#f0f4f8; padding:8px; border-radius:6px }
+
+/* Results dashboard improvements */
+.results-dashboard{ padding:24px; margin-top:28px }
+.results-header{ margin-bottom:12px }
+.results-grid{ display:flex; gap:24px }
+.left-column{ flex:1 1 420px }
+.right-column{ flex:1 1 320px }
+.heatmap-section{ margin-top:12px }
+.heatmap-thumbnails{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px }
+.heatmap-thumb{ width:80px; height:80px; border-radius:8px; overflow:hidden; border:1px solid #eee; box-shadow:0 4px 12px rgba(11,20,40,0.06); cursor:pointer }
+.heatmap-thumb img{ width:100%; height:100%; object-fit:cover; display:block }
+.chart-container{ margin-top:18px; padding:12px; background:#fff; border:1px solid #eef2f8; border-radius:8px }
+.breakdown-table{ width:100%; border-collapse:collapse }
+.breakdown-table th, .breakdown-table td{ padding:8px; border-bottom:1px solid #f1f5f9 }
+.small-muted{ color:#666; }
+
+/* Responsive */
+@media (max-width: 880px){
+	.results-grid{ flex-direction:column }
+}
+
+/* IO cards */
+.io-card{ background:linear-gradient(180deg,#ffffff,#fbfdff); border:1px solid #e6eef8; padding:16px; border-radius:10px; box-shadow:0 6px 16px rgba(11,20,40,0.04) }
+.io-card h5{ margin:0; font-size:14px }
+.input-card .heatmap-thumb, .output-card .heatmap-thumb{ width:88px; height:88px }
+.verdict-badge{ display:inline-block; padding:6px 10px; border-radius:14px; color:#fff; font-weight:700; font-size:12px }
+.verdict-UNCERTAIN, .verdict-UNCERTAIN.toLowerCase{ background:#f6a01a }
+.verdict-LIKELY_REAL{ background:#2b8a3e }
+.verdict-LIKELY_FAKE{ background:#d9534f }
+.verdict-likely_real{ background:#2b8a3e }
+.verdict-uncertain{ background:#f6a01a }
+.verdict-likely_fake{ background:#d9534f }
+
+/* IO Overview */
+.io-overview{ display:flex; gap:28px; margin-bottom:20px; justify-content:space-between; align-items:flex-start }
+.io-overview > .io-card{ flex:1 1 48%; min-width:0 }
+.io-title{ font-size:14px; font-weight:600; color:#2b6cb0; margin-bottom:8px }
+.system-box{ border:1px dashed #e6eef8; padding:12px; border-radius:6px; background:linear-gradient(180deg,#fff,#fbfdff) }
+.system-step{ padding:6px 8px; border-radius:6px; margin-bottom:6px; background:#fff; border:1px solid #f1f5f9 }
+.verdict-badge{ display:inline-block; padding:6px 10px; border-radius:18px; font-weight:700; color:#fff }
+.verdict-fake{ background:#d32f2f }
+.verdict-real{ background:#2e7d32 }
+.verdict-uncertain{ background:#f59e0b }
+.output-metrics{ margin-top:10px }
+.io-heatmap{ width:140px; height:140px; border:1px solid #eee; border-radius:10px; overflow:hidden }
+.io-heatmap img{ width:100%; height:100%; object-fit:cover }
+
+@media (max-width:880px){
+	.io-overview{ flex-direction:column; gap:12px }
+	.io-overview > .io-card{ flex-basis:auto }
+}
+
+/* URL input group */
+.url-input-group{ display:flex; align-items:center; background:#fff; border:1px solid #eef4fb; padding:8px 10px; border-radius:8px }
+.url-input-icon{ font-size:18px; margin-right:8px; opacity:0.85 }
+.url-input{ border:0; outline:none; width:100%; padding:8px; font-size:14px }
+
+/* Upload preview */
+.upload-preview{ width:160px; height:160px; border-radius:10px; overflow:hidden; box-shadow:0 6px 18px rgba(11,20,40,0.04); border:1px solid #eef4fb }
+.upload-preview img{ width:100%; height:100%; object-fit:cover }
+
+/* Heatmap legend scale */
+.heatmap-scale{ display:flex; flex-direction:column; gap:6px }
+.heatmap-scale-bar{ height:10px; border-radius:6px; background: linear-gradient(90deg, #2eb82e 0%, #f7b500 50%, #e04b4b 100%); border:1px solid rgba(0,0,0,0.04) }
+.heatmap-scale-labels{ display:flex; justify-content:space-between; font-size:12px; color:#55616a }

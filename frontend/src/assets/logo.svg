@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="40" viewBox="0 0 160 40" fill="none">
+  <rect width="160" height="40" rx="8" fill="#0f172a"/>
+  <g transform="translate(8,6)">
+    <path d="M12 0 L24 6 V18 L12 24 L0 18 V6 Z" fill="#06b6d4" />
+    <text x="36" y="16" font-family="Inter, Arial" font-size="14" fill="#ffffff" font-weight="700">DeepShield</text>
+  </g>
+</svg>
