@@ -61,12 +61,12 @@ public class VideoDownloadService {
     }
 
     /**
-     * Downloads a video from the given social media URL.
+     * Downloads media from the given social media URL.
+     * First tries yt-dlp (for videos). If that fails because
+     * there's no video (image post), falls back to downloading the image.
      *
      * @param url the social media URL to download from
-     * @return the absolute path to the downloaded video file
-     * @throws UnsupportedPlatformException if the URL is from an unsupported platform
-     * @throws DownloadException if the download process fails
+     * @return the absolute path to the downloaded file
      */
     public String download(String url) {
         // Step 1: Validate URL and detect platform
@@ -85,6 +85,24 @@ public class VideoDownloadService {
         } catch (IOException e) {
             throw new DownloadException("Failed to create download directory", e);
         }
+
+        // Step 3: Try yt-dlp first (works for videos)
+        try {
+            return downloadWithYtDlp(url);
+        } catch (DownloadException e) {
+            // If yt-dlp fails because it's an image post, try image download
+            if (e.getMessage().contains("no video") || e.getMessage().contains("Unsupported URL")) {
+                log.info("No video found at URL, attempting image download...");
+                return downloadImage(url);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Downloads a video using yt-dlp.
+     */
+    private String downloadWithYtDlp(String url) {
 
         // Step 3: Build the output filename template
         // yt-dlp will replace %(title)s and %(ext)s with actual values
@@ -169,14 +187,123 @@ public class VideoDownloadService {
     }
 
     /**
-     * Fallback method: finds the most recently modified file in the downloads directory.
-     *
-     * @return absolute path of the most recent file, or null if directory is empty
+     * Downloads an image from a URL by fetching it with yt-dlp's --write-thumbnail
+     * or by directly downloading from the page.
+     * Falls back to using yt-dlp to extract and download the image URL.
+     */
+    private String downloadImage(String url) {
+        try {
+            String ytDlpPath = getYtDlpPath();
+            long startTime = System.currentTimeMillis();
+
+            // Use yt-dlp to extract the image URL and download thumbnail/image
+            String outputTemplate = DOWNLOAD_DIR.resolve("%(id)s.%(ext)s").toString();
+
+            ProcessBuilder pb = new ProcessBuilder(
+                    ytDlpPath,
+                    "--write-thumbnail",
+                    "--skip-download",
+                    "--convert-thumbnails", "jpg",
+                    "-o", outputTemplate,
+                    "--no-warnings",
+                    "--restrict-filenames",
+                    url
+            );
+
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    log.debug("yt-dlp (image): {}", line);
+                    output.append(line).append("\n");
+                }
+            }
+
+            boolean finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+            }
+
+            // Look for files created AFTER we started the download
+            String imagePath = findFileCreatedAfter(startTime);
+            if (imagePath != null) {
+                log.info("Image downloaded: {}", imagePath);
+                return imagePath;
+            }
+
+            // If yt-dlp thumbnail approach didn't work, try direct HTTP download
+            return downloadDirectImage(url);
+
+        } catch (IOException | InterruptedException e) {
+            throw new DownloadException("Failed to download image from URL: " + url, e);
+        }
+    }
+
+    /**
+     * Last resort: downloads the page and tries to find/save an image from it.
+     * Uses Java's built-in HTTP client.
+     */
+    private String downloadDirectImage(String url) {
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .followRedirects(java.net.http.HttpClient.Redirect.ALWAYS)
+                    .build();
+
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(url))
+                    .header("User-Agent", "Mozilla/5.0")
+                    .build();
+
+            java.net.http.HttpResponse<byte[]> response = client.send(request,
+                    java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+
+            String contentType = response.headers().firstValue("content-type").orElse("");
+
+            if (contentType.startsWith("image/")) {
+                // Direct image URL — save it
+                String ext = contentType.contains("png") ? "png" : "jpg";
+                String fileName = System.currentTimeMillis() + "_downloaded." + ext;
+                Path filePath = DOWNLOAD_DIR.resolve(fileName);
+                Files.write(filePath, response.body());
+                log.info("Direct image downloaded: {}", filePath);
+                return filePath.toAbsolutePath().toString();
+            }
+
+            throw new DownloadException("Could not download image from URL: " + url + ". The post may be an image that requires authentication to access.");
+
+        } catch (IOException | InterruptedException e) {
+            throw new DownloadException("Failed to download image from URL: " + url, e);
+        }
+    }
+
+    /**
+     * Finds the most recently modified file in the downloads directory.
      */
     private String findMostRecentFile() {
+        return findFileCreatedAfter(0);
+    }
+
+    /**
+     * Finds a file in the downloads directory that was modified after the given timestamp.
+     *
+     * @param afterTimestamp only return files modified after this time (millis since epoch)
+     * @return absolute path of the matching file, or null if none found
+     */
+    private String findFileCreatedAfter(long afterTimestamp) {
         try {
             return Files.list(DOWNLOAD_DIR)
                     .filter(Files::isRegularFile)
+                    .filter(p -> {
+                        try {
+                            return Files.getLastModifiedTime(p).toMillis() > afterTimestamp;
+                        } catch (IOException e) {
+                            return false;
+                        }
+                    })
                     .max((a, b) -> {
                         try {
                             return Files.getLastModifiedTime(a).compareTo(

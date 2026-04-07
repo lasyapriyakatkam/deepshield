@@ -1,67 +1,59 @@
-import React, { useState } from 'react'
-import axios from 'axios'
+import React, { useState, useRef } from 'react'
 
-// Allows overriding the API origin for static previews or non-proxied servers.
-const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE) ? import.meta.env.VITE_API_BASE : ''
-
-export default function UploadForm({ onJobCreated }) {
+export default function UploadForm({ onUpload }) {
   const [file, setFile] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [previewSrc, setPreviewSrc] = useState(null)
+  const [dragOver, setDragOver] = useState(false)
+  const inputRef = useRef()
 
-  async function submit(e) {
-    e.preventDefault()
-    setError(null)
-    if (!file) return setError('Choose a file to upload')
-    setLoading(true)
-    const form = new FormData()
-    form.append('file', file)
-    try {
-      const resp = await axios.post(`${API_BASE}/api/scan/upload`, form, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-      if (resp && resp.data && resp.data.id) {
-        onJobCreated(resp.data.id)
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || err.message)
-    } finally {
-      setLoading(false)
-    }
+  const handleFile = (f) => {
+    if (f) setFile(f)
   }
 
-  function onFileChange(e) {
-    const f = e.target.files?.[0] ?? null
-    setFile(f)
-    if (!f) {
-      setPreviewSrc(null)
-      return
-    }
-    // Show local preview for common image types
-    if (f.type && f.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = () => setPreviewSrc(reader.result)
-      reader.readAsDataURL(f)
-    } else {
-      setPreviewSrc(null)
-    }
+  const handleSubmit = async () => {
+    if (!file) return
+    setLoading(true)
+    await onUpload(file)
+    setLoading(false)
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setDragOver(false)
+    const f = e.dataTransfer.files[0]
+    handleFile(f)
   }
 
   return (
-    <form className="upload-form" onSubmit={submit}>
-      <h2>Upload a file</h2>
-      <input type="file" accept="image/*,video/*" onChange={onFileChange} />
-      {previewSrc && (
-        <div style={{marginTop:8}} className="upload-preview-wrap">
-          <div style={{fontSize:12,color:'#666',marginBottom:6}}>Preview</div>
-          <div className="upload-preview">
-            <img src={previewSrc} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover'}} />
-          </div>
+      <div className="input-card">
+        <h2>Upload a file</h2>
+        <div
+            className="upload-zone"
+            style={dragOver ? { borderColor: '#3b82f6', background: '#161822' } : {}}
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+        >
+          <div className="upload-zone-icon">📁</div>
+          <div>Drop image or video here</div>
+          <p>or click to browse - JPG, PNG, MP4, MOV</p>
         </div>
-      )}
-      <button type="submit" disabled={loading}>{loading ? 'Uploading...' : 'Upload'}</button>
-      {error && <div className="error">{error}</div>}
-    </form>
+        <input
+            ref={inputRef}
+            type="file"
+            accept="image/*,video/*"
+            style={{ display: 'none' }}
+            onChange={(e) => handleFile(e.target.files[0])}
+        />
+        {file && (
+            <div className="file-info">
+              <span>{file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
+              <button className="btn-primary" onClick={handleSubmit} disabled={loading} style={{ padding: '8px 18px', fontSize: 13 }}>
+                {loading ? 'Analyzing...' : 'Analyze'}
+              </button>
+            </div>
+        )}
+      </div>
   )
 }

@@ -22,8 +22,8 @@ import java.util.List;
 public class TemporalConsistencyStrategy implements AnalysisStrategy {
 
     /** Threshold for standard deviation to consider scores inconsistent */
-    private static final double HIGH_VARIANCE_THRESHOLD = 0.25;
-    private static final double MEDIUM_VARIANCE_THRESHOLD = 0.15;
+    private static final double HIGH_VARIANCE_THRESHOLD = 0.35;
+    private static final double MEDIUM_VARIANCE_THRESHOLD = 0.25;
 
     @Override
     public String getName() {
@@ -57,9 +57,9 @@ public class TemporalConsistencyStrategy implements AnalysisStrategy {
                 .orElse(0.0);
         double stdDev = Math.sqrt(variance);
 
-        // Find spikes — frames where confidence jumps significantly above mean
+        // Find spikes — frames where confidence is significantly above mean AND high in absolute terms
         long spikeCount = predictions.stream()
-                .filter(p -> p.getFakeConfidence() > mean + (2 * stdDev) && p.getFakeConfidence() > 0.5)
+                .filter(p -> p.getFakeConfidence() > mean + (2 * stdDev) && p.getFakeConfidence() > 0.7)
                 .count();
 
         // Determine status and score
@@ -69,19 +69,19 @@ public class TemporalConsistencyStrategy implements AnalysisStrategy {
 
         if (stdDev > HIGH_VARIANCE_THRESHOLD) {
             status = "FAIL";
-            score = Math.min(1.0, stdDev * 2 + (spikeCount * 0.1));
+            score = Math.min(1.0, stdDev + (spikeCount * 0.1));
             description = String.format(
                     "High inconsistency detected across %d frames (std dev: %.3f). %d suspicious spikes found.",
                     predictions.size(), stdDev, spikeCount);
         } else if (stdDev > MEDIUM_VARIANCE_THRESHOLD || spikeCount > 0) {
             status = "WARN";
-            score = stdDev + (spikeCount * 0.05);
+            score = Math.min(0.5, stdDev + (spikeCount * 0.05));
             description = String.format(
                     "Moderate variation across %d frames (std dev: %.3f). %d potential spikes.",
                     predictions.size(), stdDev, spikeCount);
         } else {
             status = "PASS";
-            score = stdDev;
+            score = stdDev * 0.5;
             description = String.format(
                     "Consistent scores across %d frames (std dev: %.3f). No suspicious spikes.",
                     predictions.size(), stdDev);

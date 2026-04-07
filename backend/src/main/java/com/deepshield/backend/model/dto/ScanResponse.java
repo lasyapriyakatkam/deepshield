@@ -11,6 +11,7 @@ import java.util.List;
 
 /**
  * DTO for returning scan results to the frontend.
+ * Includes all fields that the React ResultsDashboard expects.
  */
 @Data
 @NoArgsConstructor
@@ -24,7 +25,19 @@ public class ScanResponse {
     private Double confidenceScore;
     private String explanation;
     private String heatmapBase64;
-    private List<AnalysisDetail> breakdown;
+    private String inputSource;
     private LocalDateTime createdAt;
     private LocalDateTime completedAt;
+
+    /** Error message if scan failed */
+    private String errorMessage;
+
+    /** Analysis breakdown — list of individual check results */
+    private List<AnalysisDetail> breakdown;
+
+    /** Per-face heatmap data for the frontend thumbnails */
+    private List<FaceHeatmapDto> faceHeatmaps;
+
+    /** Per-frame confidence scores for the timeline chart */
+    private List<Double> frameScores;
 }

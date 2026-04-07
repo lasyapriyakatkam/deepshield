@@ -63,6 +63,22 @@ public class ScanJob {
     /** Timestamp when the scan finished */
     private LocalDateTime completedAt;
 
+    /** Error message if the scan failed */
+    @Column(length = 1000)
+    private String errorMessage;
+
+    /** Analysis breakdown stored as JSON string */
+    @Column(columnDefinition = "CLOB")
+    private String breakdownJson;
+
+    /** Face heatmaps stored as JSON string */
+    @Column(columnDefinition = "CLOB")
+    private String faceHeatmapsJson;
+
+    /** Per-frame confidence scores stored as JSON string */
+    @Column(columnDefinition = "CLOB")
+    private String frameScoresJson;
+
     /**
      * Auto-set createdAt and status before persisting.
      */

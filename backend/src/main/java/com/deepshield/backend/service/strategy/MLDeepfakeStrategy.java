@@ -55,30 +55,29 @@ public class MLDeepfakeStrategy implements AnalysisStrategy {
                 .filter(p -> "FAKE".equals(p.getLabel()))
                 .count();
 
+        // Use average fake confidence as the single score
+        double score = avgFakeConfidence;
+
         // Determine status tag
         String status;
         String description;
 
-        if (avgFakeConfidence > 0.75) {
+        if (score > 0.75) {
             status = "FAKE";
             description = String.format(
                     "%d of %d faces classified as fake. Average confidence: %.1f%%",
-                    fakeCount, predictions.size(), avgFakeConfidence * 100);
-        } else if (avgFakeConfidence > 0.40) {
+                    fakeCount, predictions.size(), score * 100);
+        } else if (score > 0.40) {
             status = "WARN";
             description = String.format(
                     "Inconclusive results across %d faces. Average confidence: %.1f%%",
-                    predictions.size(), avgFakeConfidence * 100);
+                    predictions.size(), score * 100);
         } else {
             status = "PASS";
             description = String.format(
                     "All %d faces appear authentic. Average confidence: %.1f%%",
-                    predictions.size(), avgFakeConfidence * 100);
+                    predictions.size(), score * 100);
         }
-
-        // Use a blend of average and max for the final score
-        // This ensures a single highly-fake face still raises the alarm
-        double score = (avgFakeConfidence * 0.6) + (maxFakeConfidence * 0.4);
 
         return AnalysisDetail.builder()
                 .checkName(getName())

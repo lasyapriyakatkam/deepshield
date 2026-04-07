@@ -35,7 +35,7 @@ public class ExplanationGeneratorService {
                 sb.append("This content shows strong signs of manipulation or AI generation. ");
                 break;
             case UNCERTAIN:
-                sb.append("The analysis produced mixed results — some indicators suggest possible manipulation. ");
+                sb.append("The analysis produced mixed results - some indicators suggest possible manipulation. ");
                 break;
             case LIKELY_REAL:
                 sb.append("This content appears to be authentic based on our analysis. ");
@@ -83,7 +83,7 @@ public class ExplanationGeneratorService {
 
         // Confidence summary
         sb.append(String.format(
-                "Overall confidence score: %.0f%%.",
+                "Overall manipulation confidence: %.0f%%.",
                 result.getConfidenceScore() * 100));
 
         String explanation = sb.toString().trim();

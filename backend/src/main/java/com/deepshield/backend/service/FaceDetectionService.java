@@ -122,11 +122,11 @@ public class FaceDetectionService {
 
         log.info("Detected {} total faces across {} images", totalFaces, imagePaths.size());
 
-        // If no faces were found, return original images as fallback
-        // (the ML model can still try to analyze them)
+        // If no faces were found at all, return just the first image as fallback
+        // so the pipeline has at least something to analyze
         if (facePaths.isEmpty()) {
-            log.warn("No faces detected — returning original images for analysis");
-            return imagePaths;
+            log.warn("No faces detected in any frame — using first image as fallback");
+            facePaths.add(imagePaths.get(0));
         }
 
         return facePaths;

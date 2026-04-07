@@ -153,9 +153,6 @@ public class DeepfakeClassifierService {
 
     /**
      * Runs deepfake classification on a single face image.
-     *
-     * @param imagePath absolute path to the face image
-     * @return MLPredictionResult with confidence scores and label
      */
     public MLPredictionResult predict(String imagePath) {
         if (model == null) {
@@ -163,14 +160,11 @@ public class DeepfakeClassifierService {
         }
 
         try {
-            // Load the image using DJL
             Image image = ImageFactory.getInstance().fromFile(Paths.get(imagePath));
 
-            // Run inference
             try (Predictor<Image, Classifications> predictor = model.newPredictor()) {
                 Classifications result = predictor.predict(image);
 
-                // Extract probabilities
                 double fakeProb = 0.5;
                 double realProb = 0.5;
 
@@ -192,7 +186,6 @@ public class DeepfakeClassifierService {
 
                 String label = fakeProb > 0.5 ? "FAKE" : "REAL";
 
-                // Generate a simple heatmap visualization
                 String heatmap = generateSimpleHeatmap(imagePath, fakeProb);
 
                 log.info("Prediction for {}: {} (fake={}, real={})",
@@ -216,9 +209,6 @@ public class DeepfakeClassifierService {
 
     /**
      * Runs deepfake classification on multiple face images.
-     *
-     * @param imagePaths list of absolute paths to face images
-     * @return list of MLPredictionResult for each image
      */
     public List<MLPredictionResult> predictBatch(List<String> imagePaths) {
         List<MLPredictionResult> results = new ArrayList<>();
@@ -228,7 +218,6 @@ public class DeepfakeClassifierService {
                 results.add(predict(path));
             } catch (Exception e) {
                 log.warn("Failed to classify image: {} — skipping", path, e);
-                // Add a fallback result for failed predictions
                 results.add(MLPredictionResult.builder()
                         .fakeConfidence(0.5)
                         .realConfidence(0.5)
@@ -254,38 +243,42 @@ public class DeepfakeClassifierService {
             int width = original.getWidth();
             int height = original.getHeight();
 
-            // Create the heatmap overlay
             BufferedImage heatmap = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g2d = heatmap.createGraphics();
-
-            // Draw the original image
             g2d.drawImage(original, 0, 0, null);
 
-            // Create a gradient overlay based on confidence
-            // Higher fake confidence = more red overlay
-            // Focus the heat on the center of the face (where artifacts typically appear)
             for (int y = 0; y < height; y++) {
                 for (int x = 0; x < width; x++) {
-                    // Calculate distance from center (normalized 0-1)
                     double cx = (double) x / width - 0.5;
                     double cy = (double) y / height - 0.5;
                     double dist = Math.sqrt(cx * cx + cy * cy) * 2;
 
-                    // Create heat intensity — stronger at center, fades at edges
-                    double intensity = Math.max(0, 1.0 - dist) * fakeConfidence;
+                    // Boost intensity so heatmap is always visible
+                    // Use at least 0.3 base intensity + scaled by confidence
+                    double baseIntensity = Math.max(0, 1.0 - dist);
+                    double intensity = baseIntensity * (0.3 + fakeConfidence * 0.7);
 
-                    // Map intensity to color: green (safe) → yellow → red (suspicious)
                     int red, green;
-                    if (intensity < 0.5) {
-                        red = (int) (255 * intensity * 2);
-                        green = 255;
+                    if (fakeConfidence < 0.4) {
+                        // Low fake confidence — green overlay
+                        red = (int) (100 * intensity);
+                        green = (int) (255 * intensity);
+                    } else if (fakeConfidence < 0.65) {
+                        // Medium — yellow/orange overlay
+                        red = (int) (255 * intensity);
+                        green = (int) (200 * intensity);
                     } else {
-                        red = 255;
-                        green = (int) (255 * (1 - intensity) * 2);
+                        // High fake confidence — red overlay
+                        red = (int) (255 * intensity);
+                        green = (int) (80 * intensity * (1 - fakeConfidence));
                     }
 
-                    int alpha = (int) (120 * intensity);
-                    Color overlayColor = new Color(red, green, 0, alpha);
+                    int alpha = (int) (150 * baseIntensity);  // Always visible
+                    Color overlayColor = new Color(
+                            Math.min(255, Math.max(0, red)),
+                            Math.min(255, Math.max(0, green)),
+                            0,
+                            Math.min(255, Math.max(0, alpha)));
                     g2d.setColor(overlayColor);
                     g2d.fillRect(x, y, 1, 1);
                 }

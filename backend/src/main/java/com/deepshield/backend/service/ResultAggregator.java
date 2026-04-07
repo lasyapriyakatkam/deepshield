@@ -90,6 +90,7 @@ public class ResultAggregator {
     /**
      * Calculates the weighted score from all analysis details.
      * Maps each check name to its weight.
+     * Applies a boost when multiple signals agree on suspicion.
      */
     private double calculateWeightedScore(List<AnalysisDetail> breakdown) {
         double totalScore = 0.0;
@@ -99,27 +100,40 @@ public class ResultAggregator {
             // Skip N/A results (don't count them in the weighted average)
             if ("N/A".equals(detail.getStatus())) continue;
 
-            double weight = getWeight(detail.getCheckName());
+            double weight = getWeight(detail.getCheckName(), breakdown);
             totalScore += detail.getScore() * weight;
             totalWeight += weight;
         }
 
-        // Normalize by actual weight used (in case some checks were N/A)
+        // Normalize by actual weight used
+        double weightedScore = 0.5;
         if (totalWeight > 0) {
-            return totalScore / totalWeight;
+            weightedScore = totalScore / totalWeight;
         }
-        return 0.5; // Default to uncertain if no checks ran
+
+        return weightedScore;
     }
 
     /**
      * Returns the weight for a given check name.
+     * Adjusts temporal weight based on CNN result — if CNN says PASS,
+     * temporal variance is likely natural movement, not manipulation.
      */
-    private double getWeight(String checkName) {
+    private double getWeight(String checkName, List<AnalysisDetail> allDetails) {
+        if ("Temporal Consistency".equals(checkName)) {
+            // Check if CNN passed — if so, temporal variance is probably harmless
+            boolean cnnPassed = allDetails.stream()
+                    .anyMatch(d -> "CNN Face Classification".equals(d.getCheckName())
+                            && "PASS".equals(d.getStatus()));
+            if (cnnPassed) {
+                return 0.05; // Heavily reduce temporal weight when CNN says real
+            }
+            return TEMPORAL_WEIGHT;
+        }
         return switch (checkName) {
             case "CNN Face Classification" -> CNN_WEIGHT;
             case "EXIF / Metadata Check" -> METADATA_WEIGHT;
-            case "Temporal Consistency" -> TEMPORAL_WEIGHT;
-            default -> 0.10; // Default weight for unknown strategies
+            default -> 0.10;
         };
     }
 
